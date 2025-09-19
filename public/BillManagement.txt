@@ -1,0 +1,339 @@
+import React, { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { ThaiDatePicker } from "@/components/ui/thai-date-picker";
+import { Badge } from "@/components/ui/badge";
+import { Search, Filter, Plus, FileText, ArrowLeft } from "lucide-react";
+import { formatThaiDateShort } from "@/lib/thai-locale";
+import { toast } from "@/hooks/use-toast";
+
+// Interface สำหรับโครงสร้างข้อมูลของบิล
+interface Bill {
+  id: string;
+  billNo: string;
+  date: Date;
+  customer: string;
+  amount: number;
+  remainingAmount: number;
+  notes: string;
+  recordedBy: string;
+  recordedDate: Date;
+  recordedTime: string;
+  employeeNote: string;
+}
+
+export function BillManagement() {
+  // State สำหรับสลับหน้า (menu, bills, reports, editNote)
+  const [currentPage, setCurrentPage] = useState<"menu" | "bills" | "reports" | "editNote">("menu");
+
+  // State สำหรับเก็บข้อมูลบิลทั้งหมด (เหมือนข้อมูลในชีตเวอร์ชัน 13.40)
+  const [bills, setBills] = useState<Bill[]>([
+    {
+      id: "1",
+      billNo: "B001",
+      date: new Date(2025, 8, 15),
+      customer: "บริษัท ABC จำกัด",
+      amount: 50000,
+      remainingAmount: 25000,
+      notes: "ชำระครึ่งแรกแล้ว",
+      recordedBy: "admin@company.com",
+      recordedDate: new Date(2025, 8, 15),
+      recordedTime: "14:30",
+      employeeNote: ""
+    },
+    {
+      id: "2",
+      billNo: "B002",
+      date: new Date(2025, 8, 18),
+      customer: "ร้านค้า XYZ",
+      amount: 30000,
+      remainingAmount: 0,
+      notes: "ชำระครบแล้ว",
+      recordedBy: "admin@company.com",
+      recordedDate: new Date(2025, 8, 18),
+      recordedTime: "16:45",
+      employeeNote: "ลูกค้าชำระเงินสด"
+    }
+  ]);
+
+  // State สำหรับจำลองข้อมูลลูกค้าจากชีต "ชื่อร้าน"
+  const [customers] = useState<string[]>([
+    "บริษัท ABC จำกัด", "ร้านค้า XYZ", "บริษัท DEF จำกัด", "ห้างสรรพสินค้า GHI",
+    "ร้านอาหาร JKL", "บริษัท MNO จำกัด (มหาชน)", "ร้านเสื้อผ้า PQR", "ศูนย์การค้า STU"
+  ]);
+
+  // State สำหรับจัดการข้อมูลในฟอร์มบันทึกบิลใหม่
+  const [formData, setFormData] = useState({ billNo: "", customer: "", amount: "", notes: "" });
+
+  // State สำหรับจัดการข้อมูลในส่วนฟิลเตอร์
+  const [filterStartDate, setFilterStartDate] = useState<Date | undefined>();
+  const [filterEndDate, setFilterEndDate] = useState<Date | undefined>();
+  const [filterBillNo, setFilterBillNo] = useState("");
+
+  // State สำหรับจัดการการแก้ไขโน้ต
+  const [editingBill, setEditingBill] = useState<Bill | null>(null);
+  const [newEmployeeNote, setNewEmployeeNote] = useState("");
+
+  // --- Functions ---
+
+  const handleEditNote = (bill: Bill) => {
+    setEditingBill(bill);
+    setNewEmployeeNote(bill.employeeNote);
+    setCurrentPage("editNote");
+  };
+
+  const handleSaveNote = () => {
+    if (!editingBill) return;
+    const updatedBills = bills.map(b =>
+      b.id === editingBill.id ? { ...b, employeeNote: newEmployeeNote } : b
+    );
+    setBills(updatedBills);
+    setEditingBill(null);
+    setNewEmployeeNote("");
+    setCurrentPage("bills");
+    toast({ title: "สำเร็จ", description: "บันทึกโน้ตเรียบร้อยแล้ว" });
+  };
+
+  const handleNewBill = () => {
+    if (!formData.billNo || !formData.customer || !formData.amount) {
+      toast({ title: "ข้อผิดพลาด", description: "กรุณากรอกข้อมูลให้ครบถ้วน", variant: "destructive" });
+      return;
+    }
+    const parsedAmount = parseFloat(formData.amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      toast({ title: "ข้อผิดพลาด", description: "ยอดเงินต้องมากกว่า 0", variant: "destructive" });
+      return;
+    }
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const newBill: Bill = {
+      id: Date.now().toString(),
+      billNo: formData.billNo,
+      date: now,
+      customer: formData.customer,
+      amount: parsedAmount,
+      remainingAmount: parsedAmount,
+      notes: formData.notes,
+      recordedBy: "admin@company.com",
+      recordedDate: now,
+      recordedTime: timeString,
+      employeeNote: ""
+    };
+    setBills([newBill, ...bills]);
+    setFormData({ billNo: "", customer: "", amount: "", notes: "" });
+    toast({ title: "สำเร็จ", description: "บันทึกบิลใหม่เรียบร้อยแล้ว" });
+  };
+
+  const filterBills = () => {
+    // ปรับปรุงการเปรียบเทียบวันที่ให้ครอบคลุมทั้งวัน
+    const startOfDay = filterStartDate ? new Date(filterStartDate.setHours(0, 0, 0, 0)) : undefined;
+    const endOfDay = filterEndDate ? new Date(filterEndDate.setHours(23, 59, 59, 999)) : undefined;
+
+    return bills.filter(bill => {
+      const billDate = bill.date;
+      const startMatch = !startOfDay || billDate >= startOfDay;
+      const endMatch = !endOfDay || billDate <= endOfDay;
+      const billNoMatch = !filterBillNo || bill.billNo.toLowerCase().includes(filterBillNo.toLowerCase());
+      return startMatch && endMatch && billNoMatch;
+    });
+  };
+
+  // --- Render Pages ---
+
+  if (currentPage === "menu") {
+    return (
+      <div className="min-h-screen bg-gradient-surface p-6">
+        <div className="max-w-4xl mx-auto">
+          <Card className="shadow-medium border-thai-border-light">
+            <CardHeader className="text-center bg-gradient-primary text-primary-foreground rounded-t-lg">
+              <CardTitle className="text-2xl font-bold">ระบบจัดการบิล</CardTitle>
+              <p className="opacity-90">เลือกเมนูที่ต้องการใช้งาน</p>
+            </CardHeader>
+            <CardContent className="p-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <Button onClick={() => setCurrentPage("bills")} className="h-32 text-lg bg-primary hover:bg-primary/90 shadow-soft" size="lg">
+                  <div className="flex flex-col items-center gap-3">
+                    <FileText className="h-8 w-8" />
+                    <span>📝 บันทึกบิลใหม่และดูตารางบิล</span>
+                  </div>
+                </Button>
+                <Button onClick={() => setCurrentPage("reports")} className="h-32 text-lg bg-accent hover:bg-accent/90 shadow-soft" size="lg">
+                  <div className="flex flex-col items-center gap-3">
+                    <Search className="h-8 w-8" />
+                    <span>📊 สร้างรายงานบิล</span>
+                  </div>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentPage === "bills") {
+    return (
+      <div className="min-h-screen bg-gradient-surface p-6">
+        <div className="max-w-7xl mx-auto space-y-6">
+          <div className="flex items-center gap-4">
+            <Button variant="outline" onClick={() => setCurrentPage("menu")} className="shadow-soft">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              กลับสู่เมนูหลัก
+            </Button>
+            <h1 className="text-2xl font-bold text-foreground">จัดการบิล</h1>
+          </div>
+
+          <Card className="shadow-medium border-thai-border-light">
+            <CardHeader className="bg-gradient-primary text-primary-foreground">
+              <CardTitle className="flex items-center gap-2"><Plus className="h-5 w-5" /> บันทึกบิลใหม่</CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="billNo">เลขที่บิล</Label>
+                  <Input id="billNo" value={formData.billNo} onChange={(e) => setFormData({...formData, billNo: e.target.value})} className="bg-thai-surface border-thai-border-light" />
+                </div>
+                <div>
+                  <Label htmlFor="customer">ลูกค้า</Label>
+                  <select id="customer" value={formData.customer} onChange={(e) => setFormData({...formData, customer: e.target.value})} className="w-full mt-2 px-3 py-2 bg-thai-surface border border-thai-border-light rounded-md focus:outline-none focus:ring-2 focus:ring-primary">
+                    <option value="">เลือกลูกค้า</option>
+                    {customers.map((c, i) => <option key={i} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <Label htmlFor="amount">ยอดเงิน</Label>
+                  <Input id="amount" type="number" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} className="bg-thai-surface border-thai-border-light" />
+                </div>
+              </div>
+              <div className="mt-4">
+                <Label htmlFor="notes">หมายเหตุ</Label>
+                <Textarea id="notes" value={formData.notes} onChange={(e) => setFormData({...formData, notes: e.target.value})} className="bg-thai-surface border-thai-border-light" />
+              </div>
+              <Button onClick={handleNewBill} className="mt-4 w-full bg-success hover:bg-success/90 shadow-soft">บันทึกบิล</Button>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-medium border-thai-border-light">
+            <CardHeader className="bg-thai-surface-alt border-b border-thai-border-light">
+              <CardTitle className="flex items-center gap-2"><Filter className="h-5 w-5" /> กรองข้อมูล</CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div>
+                  <Label>ตั้งแต่วันที่</Label>
+                  <ThaiDatePicker date={filterStartDate} onDateChange={setFilterStartDate} placeholder="เลือกวันที่เริ่มต้น" />
+                </div>
+                <div>
+                  <Label>ถึงวันที่</Label>
+                  <ThaiDatePicker date={filterEndDate} onDateChange={setFilterEndDate} placeholder="เลือกวันที่สิ้นสุด" />
+                </div>
+                <div>
+                  <Label>เลขที่บิล</Label>
+                  <Input value={filterBillNo} onChange={(e) => setFilterBillNo(e.target.value)} placeholder="ระบุหากต้องการ" className="bg-thai-surface border-thai-border-light" />
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={() => setFilterStartDate(undefined); setFilterEndDate(undefined); setFilterBillNo(""); toast({ title: "รีเฟรชตารางเรียบร้อย" }); }} variant="secondary" className="shadow-soft w-full">รีเฟรช</Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-medium border-thai-border-light">
+            <CardHeader className="bg-thai-surface-alt border-b border-thai-border-light">
+              <CardTitle>ตารางบิล ({filterBills().length} รายการ)</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-thai-warning/20 border-b border-thai-border-light sticky top-0">
+                    <tr>
+                      <th className="p-3 text-left font-semibold">เลขที่บิล</th>
+                      <th className="p-3 text-left font-semibold">วันที่</th>
+                      <th className="p-3 text-left font-semibold">ลูกค้า</th>
+                      <th className="p-3 text-right font-semibold">ยอดบิล</th>
+                      <th className="p-3 text-right font-semibold">ยอดคงเหลือ</th>
+                      <th className="p-3 text-left font-semibold">หมายเหตุ</th>
+                      <th className="p-3 text-left font-semibold">เวลา</th>
+                      <th className="p-3 text-left font-semibold">โน้ต</th>
+                      <th className="p-3 text-center font-semibold">จัดการ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filterBills().map(bill => (
+                      <tr key={bill.id} className={`border-b border-thai-border-light hover:bg-thai-surface-alt transition-colors ${bill.remainingAmount === 0 ? "bg-success/5" : ""}`}>
+                        <td className="p-3 font-medium">{bill.billNo}</td>
+                        <td className="p-3">{formatThaiDateShort(bill.date)}</td>
+                        <td className="p-3">{bill.customer}</td>
+                        <td className="p-3 text-right">{bill.amount.toLocaleString('th-TH')}</td>
+                        <td className={`p-3 font-semibold text-right ${bill.remainingAmount > 0 ? 'text-warning' : 'text-success'}`}>{bill.remainingAmount.toLocaleString('th-TH')}</td>
+                        <td className="p-3">{bill.notes}</td>
+                        <td className="p-3 text-muted-foreground">{bill.recordedTime}</td>
+                        <td className="p-3 text-primary">{bill.employeeNote || "-"}</td>
+                        <td className="p-3 text-center">
+                          <Button onClick={() => handleEditNote(bill)} size="sm" variant="outline" className="text-xs">แก้ไขโน้ต</Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentPage === "editNote") {
+    return (
+      <div className="min-h-screen bg-gradient-surface p-6">
+        <div className="max-w-4xl mx-auto">
+          <Card className="shadow-medium border-thai-border-light">
+            <CardHeader className="bg-gradient-primary text-primary-foreground">
+              <div className="flex items-center gap-4">
+                <Button variant="outline" onClick={() => setCurrentPage("bills")} className="bg-white/10 text-white border-white/20 hover:bg-white/20">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  กลับ
+                </Button>
+                <CardTitle>แก้ไขโน้ต</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6">
+              {editingBill && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-thai-surface-alt rounded-lg">
+                    <div><Label className="font-semibold">เลขที่บิล:</Label><p>{editingBill.billNo}</p></div>
+                    <div><Label className="font-semibold">ลูกค้า:</Label><p>{editingBill.customer}</p></div>
+                    <div><Label className="font-semibold">ยอดบิล:</Label><p>{editingBill.amount.toLocaleString('th-TH')} บาท</p></div>
+                    <div><Label className="font-semibold">วันที่บันทึก:</Label><p>{formatThaiDateShort(editingBill.date)} เวลา {editingBill.recordedTime} น.</p></div>
+                  </div>
+                  <div>
+                    <Label htmlFor="employeeNote" className="font-semibold">โน้ตจากพนักงาน:</Label>
+                    <Textarea id="employeeNote" value={newEmployeeNote} onChange={(e) => setNewEmployeeNote(e.target.value)} className="mt-2 bg-thai-surface border-thai-border-light" placeholder="เพิ่มโน้ตสำหรับแจ้งแอดมินหรือข้อมูลเพิ่มเติม..." rows={4} />
+                  </div>
+                  <div className="flex gap-3">
+                    <Button onClick={handleSaveNote} className="bg-success hover:bg-success/90 shadow-soft">บันทึกโน้ต</Button>
+                    <Button onClick={() => setCurrentPage("bills")} variant="secondary" className="shadow-soft">ยกเลิก</Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+  
+  // Fallback for "reports" page or other states
+  return (
+    <div className="min-h-screen bg-gradient-surface p-6">
+      <div className="max-w-4xl mx-auto">
+        <Button onClick={() => setCurrentPage("menu")}>กลับสู่เมนูหลัก</Button>
+        <p>หน้านี้ยังไม่เปิดใช้งาน</p>
+      </div>
+    </div>
+  );
+}
