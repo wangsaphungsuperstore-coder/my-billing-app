@@ -10,7 +10,7 @@ import { Search, Filter, Plus, FileText, ArrowLeft } from "lucide-react";
 import { formatThaiDateShort } from "@/lib/thai-locale";
 import { toast } from "@/hooks/use-toast";
 
-// Interface สำหรับโครงสร้างข้อมูลของบิล
+// Interface 
 interface Bill {
   id: string;
   billNo: string;
